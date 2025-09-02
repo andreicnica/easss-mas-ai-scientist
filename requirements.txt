@@ -1,0 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+numpy
+scikit-learn
+matplotlib
+torch
+transformers
+datasets
+accelerate
+huggingface_hub
+openai
