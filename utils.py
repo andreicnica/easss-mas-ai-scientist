@@ -13,6 +13,10 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 
 from embedding_model import EmbeddingCache
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
 
 # =========================
 # 1) Hypothesis structure
@@ -195,6 +199,22 @@ def evaluate_merged(merged_rules: List[str], emb: EmbeddingCache, ground_truth_r
     score = greedy_groundtruth_score(ground_truth_rules, merged_rules, emb)
     diversity = diversity_stats_emb(merged_rules, emb)
     return {"score": score, "diversity": diversity}
+
+# =========================
+# Logging helpers (JSONL)
+# =========================
+
+def append_jsonl(path: str | Path, data: dict) -> None:
+    """Append a dict as one JSON line to the given file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # auto-add timestamp if not present
+    if "timestamp" not in data:
+        data = {"timestamp": datetime.now().isoformat(timespec="seconds"), **data}
+
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(data, ensure_ascii=False) + "\n")
 
 
 @dataclass

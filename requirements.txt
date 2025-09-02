@@ -9,3 +9,4 @@ datasets
 accelerate
 huggingface_hub
 openai
+simple_parsing

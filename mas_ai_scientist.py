@@ -14,12 +14,15 @@ from functools import partial
 from typing import Callable, Dict, Any, Literal
 from typing import List, Tuple, Optional
 
+from simple_parsing import ArgumentParser
+
 from cost_tracker import CostTracker, print_totals
 from embedding_model import get_embedding_model
 from llm import BaseLLM, GPTLLM
 from problem_description import PROBLEM_DESCRIPTION, GROUND_TRUTH_RULES
-from utils import Message, Hypothesis, parse_hypothesis, format_transcript, ArgumentsParent
+from utils import Message, Hypothesis, parse_hypothesis, format_transcript, ArgumentsParent, append_jsonl
 from utils import merge_hypothesis, log_transcript, evaluate_merged
+
 
 # %%
 # =========================
@@ -296,6 +299,7 @@ def propose_verify(expert: Agent, verifier: Agent, iterations: int = 3) -> Tuple
 
 @dataclass
 class Arguments(ArgumentsParent):
+    experiment_name: str = "default"
     # experiments: tuple[str] = ("BasicProposal", "CollectProposals", "Debate", "ProposeVerify")
     experiments: tuple[str] = ("BasicProposal",)
     rounds: int = 2
@@ -423,7 +427,23 @@ def demo(args: Arguments) -> None:
     #     for v in pv.extra["verdicts"]:
     #         print(f"- [{v['status']}] {v['rule']} :: {v.get('reason','')}")
 
+    # Build a dict with only what you want
+    save_info = {
+        "experiment_name": args.experiment_name,
+        "experiments": args.experiments,
+        "avg_similarity": metrics["score"]["avg_similarity"],
+        "diversity": metrics["diversity"],
+        "rounds": args.rounds,
+        "model": args.model,
+        "merged_rules": merged_rules,
+    }
+
+    append_jsonl("experiment_log.jsonl", save_info)
+    print("[log] appended to experiment_log.jsonl")
 
 
 if __name__ == "__main__":
-    demo(Arguments())
+    parser = ArgumentParser()
+    parser.add_arguments(Arguments, dest="args")
+    args = parser.parse_args().args
+    demo(args)
