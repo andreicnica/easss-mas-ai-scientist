@@ -18,7 +18,7 @@ from simple_parsing import ArgumentParser
 
 from cost_tracker import CostTracker, print_totals
 from embedding_model import get_embedding_model
-from llm import BaseLLM, GPTLLM
+from llm import BaseLLM, GPTLLM, get_model
 from problem_description import PROBLEM_DESCRIPTION, GROUND_TRUTH_RULES
 from utils import Message, Hypothesis, parse_hypothesis, format_transcript, ArgumentsParent, append_jsonl
 from utils import merge_hypothesis, log_transcript, evaluate_merged
@@ -303,7 +303,7 @@ class Arguments(ArgumentsParent):
     # experiments: tuple[str] = ("BasicProposal", "CollectProposals", "Debate", "ProposeVerify")
     experiments: tuple[str] = ("BasicProposal",)
     rounds: int = 2
-    model: Literal["gpt-4.1-nano"] = "gpt-4.1-nano"
+    model: Literal["gpt-4.1-nano", "qwen"] = "gpt-4.1-nano"
 
 
 def basic_agent(llm: GPTLLM, rounds: int) -> Callable[[], Any]:
@@ -371,7 +371,7 @@ def demo(args: Arguments) -> None:
     usage_file = "usage_log.jsonl"
     tracker = CostTracker(log_path=usage_file)  # optionally pass custom pricing=dict
     emb = get_embedding_model(tracker, cache_path="embeddings_cache.json")
-    llm = GPTLLM(model=args.model, tracker=tracker)
+    llm = get_model(tracker, args.model)
 
     orchestrations: dict[str, Callable[[], Any]] = {}
 

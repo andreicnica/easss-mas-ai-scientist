@@ -6,6 +6,9 @@ import math
 import re
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Iterable, Optional
+from typing import Any, Iterable, List, Union, Optional
+import json
+import re
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -43,7 +46,7 @@ class Hypothesis:
 def canon_rules(rules: Iterable[str]) -> str:
     return " | ".join(sorted(rules))
 
-def parse_hypothesis(text: str) -> Optional[list[str]]:
+def parse_hypothesis_old(text: str) -> Optional[list[str]]:
     """
     Accepts either a raw JSON object containing {"rules":[...]} or a string containing it.
     Returns list[str] (deduped, normalized) or None.
@@ -71,6 +74,102 @@ def parse_hypothesis(text: str) -> Optional[list[str]]:
         return None
     return None
 
+
+class RuleParseError(ValueError):
+    pass
+
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
+
+def _extract_json_block(s: str) -> Optional[str]:
+    """If a JSON code block is present, return its contents; else None."""
+    m = _JSON_FENCE_RE.search(s)
+    return m.group(1) if m else None
+
+def _coerce_to_obj(payload: Union[str, dict, list]) -> Any:
+    """Accept raw dict/list, JSON string, or markdown-fenced JSON."""
+    if isinstance(payload, (dict, list)):
+        return payload
+    if not isinstance(payload, str):
+        raise RuleParseError(f"Unsupported payload type: {type(payload)}")
+
+    # Try fenced JSON first
+    fenced = _extract_json_block(payload)
+    text = fenced if fenced is not None else payload.strip()
+
+    # Strip leading labels like `[M:0] Basic:` if present
+    # (grab substring starting from first `{` or `[` to end)
+    first_bracket = min([i for i in [text.find("{"), text.find("[")] if i != -1], default=-1)
+    if first_bracket > 0:
+        text = text[first_bracket:]
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise RuleParseError(f"Could not parse JSON: {e}") from e
+
+def _pick_rules_container(obj: Any) -> Iterable[Any]:
+    """Return the iterable that should contain rule strings."""
+    if isinstance(obj, list):
+        return obj
+    if isinstance(obj, dict):
+        # Prefer common keys; fall back to the first list value
+        for key in ("rules", "hypotheses", "items"):
+            if key in obj and isinstance(obj[key], list):
+                return obj[key]
+        # Fallback: first list-valued field
+        for v in obj.values():
+            if isinstance(v, list):
+                return v
+        raise RuleParseError("Dict payload has no list field (e.g., 'rules').")
+    raise RuleParseError(f"Unsupported top-level JSON type: {type(obj)}")
+
+def _clean_rule(s: str) -> str:
+    """Trim, collapse whitespace; keep original punctuation & motif syntax."""
+    # Remove surrounding quotes/spaces and collapse internal whitespace
+    s = " ".join(s.strip().split())
+    return s
+
+def parse_hypothesis(
+    payload: Union[str, dict, list],
+    *,
+    min_len: int = 1,
+    dedupe: bool = True
+) -> List[str]:
+    """
+    Normalize various inputs into a clean list of rule strings.
+
+    Accepts:
+      - {"rules": [...]} (or 'hypotheses'/'items')
+      - ["...", "..."]
+      - JSON string for either of the above (with or without ```json fences)
+      - Strings with leading labels like "[M:0] Basic:" before JSON
+    """
+    obj = _coerce_to_obj(payload)
+    container = _pick_rules_container(obj)
+
+    cleaned: List[str] = []
+    seen = set()
+    for item in container:
+        if isinstance(item, str):
+            r = _clean_rule(item)
+        elif isinstance(item, dict) and "text" in item and isinstance(item["text"], str):
+            r = _clean_rule(item["text"])
+        else:
+            # Skip non-strings quietly; could also raise if you prefer strictness
+            continue
+
+        if len(r) < min_len:
+            continue
+        if dedupe:
+            key = r.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+        cleaned.append(r)
+
+    if not cleaned:
+        raise RuleParseError("No valid rule strings found after normalization.")
+    return cleaned
 
 def merge_hypothesis(hypothesis: list[Hypothesis]) -> Hypothesis:
     x = hypothesis[0] if hypothesis else Hypothesis([], [])
@@ -222,5 +321,5 @@ class ArgumentsParent:
     model: str
 
     def __post_init__(self):
-        if "gpt" not in self.model:
+        if "gpt" in self.model:
             assert self.model in ["gpt-4.1-nano"], "GPT models are restricted to gpt-4.1-nano"
