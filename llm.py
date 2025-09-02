@@ -1,3 +1,5 @@
+import os
+
 from openai import OpenAI
 from cost_tracker import CostTracker
 from typing import Optional
@@ -100,7 +102,7 @@ class HFDeepseekLLM(BaseLLM):
 
         self.model = AutoModelForCausalLM.from_pretrained(
             model_id,
-            torch_dtype=dtype,
+            dtype=dtype,
             device_map=device_map,
             trust_remote_code=trust_remote_code,
         )
@@ -174,6 +176,7 @@ def get_model(tracker: CostTracker, model: str = "gpt-4.1-nano") -> BaseLLM:
     if "gpt" in model:
         return GPTLLM(model=model, tracker=tracker)
     elif "qwen" == model:
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
         llm = HFDeepseekLLM(
             model_id="Qwen/Qwen2.5-0.5B-Instruct",  # <1B, chat-tuned
             tracker=tracker,
